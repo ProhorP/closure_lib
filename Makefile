@@ -1,5 +1,5 @@
 CC=gcc
-CFLAGS=-c -Wall -Wextra -Wpedantic -std=c11 -g
+CFLAGS=-c -Wall -Wextra -Wpedantic -std=c11 -std=gnu99 -g
 
 all: closure
 

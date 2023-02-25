@@ -8,7 +8,6 @@
 typedef unsigned char byte;
 typedef int (*closure_t) (int, ...);
 typedef int (*closure_src_func_t) (void);
-typedef int (*test_print) (int);
 typedef struct argv_entry argv_entry;
 
 struct argv_entry
@@ -17,9 +16,16 @@ struct argv_entry
   int value;
 };
 
-int g_argc = 0;
-closure_t g_func = NULL;
-argv_entry *g_head = NULL;
+struct closure_data
+{
+  int argc;
+  closure_t func;
+  argv_entry *head;
+  size_t src_len;
+};
+
+typedef struct closure_data closure_data;
+
 
 void
 print_error (const char *format, ...)
@@ -76,8 +82,9 @@ int
 closure_pattern (int argc, ...)
 {
 
-  size_t aaa = 0;
+  closure_data *closure_ptr = NULL;
 
+asm (" movq %%rbx, %0;":"=r" (closure_ptr));
 
   int select = 0;
   argv_entry *local_argv_head = NULL, *temp_argv_head = NULL;
@@ -116,7 +123,7 @@ closure_pattern (int argc, ...)
   src[ptr_call_offset + 2] = 0xe5;
   ptr_call_offset += 3;
 
-  int argc_all = argc + g_argc;
+  int argc_all = argc + closure_ptr->argc;
   int use_stack = 0;
   temp_argv_head = local_argv_head;
 
@@ -127,7 +134,7 @@ closure_pattern (int argc, ...)
 останется 6 агрументов для передачи через регистры*/
 
       if (!temp_argv_head)
-	temp_argv_head = g_head;
+	temp_argv_head = closure_ptr->head;
 
       src[ptr_call_offset] = 0x6a;
       src[ptr_call_offset + 1] = temp_argv_head->value;
@@ -142,7 +149,7 @@ closure_pattern (int argc, ...)
   if (argc_all == 6)
     {
       if (!temp_argv_head)
-	temp_argv_head = g_head;
+	temp_argv_head = closure_ptr->head;
 
       src[ptr_call_offset] = 0x41;
       src[ptr_call_offset + 1] = 0xb9;
@@ -158,7 +165,7 @@ closure_pattern (int argc, ...)
   if (argc_all == 5)
     {
       if (!temp_argv_head)
-	temp_argv_head = g_head;
+	temp_argv_head = closure_ptr->head;
 
       src[ptr_call_offset] = 0x41;
       src[ptr_call_offset + 1] = 0xb8;
@@ -173,7 +180,7 @@ closure_pattern (int argc, ...)
   if (argc_all == 4)
     {
       if (!temp_argv_head)
-	temp_argv_head = g_head;
+	temp_argv_head = closure_ptr->head;
 
       src[ptr_call_offset] = 0xb9;
       *((unsigned int *) (src + ptr_call_offset + 1)) =
@@ -188,7 +195,7 @@ closure_pattern (int argc, ...)
   if (argc_all == 3)
     {
       if (!temp_argv_head)
-	temp_argv_head = g_head;
+	temp_argv_head = closure_ptr->head;
 
       src[ptr_call_offset] = 0xba;
       *((unsigned int *) (src + ptr_call_offset + 1)) =
@@ -203,7 +210,7 @@ closure_pattern (int argc, ...)
   if (argc_all == 2)
     {
       if (!temp_argv_head)
-	temp_argv_head = g_head;
+	temp_argv_head = closure_ptr->head;
 
       src[ptr_call_offset] = 0xbe;
       *((unsigned int *) (src + ptr_call_offset + 1)) =
@@ -218,7 +225,7 @@ closure_pattern (int argc, ...)
   if (argc_all == 1)
     {
       if (!temp_argv_head)
-	temp_argv_head = g_head;
+	temp_argv_head = closure_ptr->head;
 
       src[ptr_call_offset] = 0xbf;
       *((unsigned int *) (src + ptr_call_offset + 1)) =
@@ -229,7 +236,7 @@ closure_pattern (int argc, ...)
     }
 
 
-/*Очищаем eax(так надо) и вызываем функцию через rbx*/
+/*Очищаем eax(так надо для вызова функций с переменным числом параметров) и вызываем функцию через rbx*/
 
 /*mov eax, 0*/
   src[ptr_call_offset] = 0xb8;
@@ -239,7 +246,7 @@ closure_pattern (int argc, ...)
 /*mov rbx, func*/
   src[ptr_call_offset] = 0x48;
   src[ptr_call_offset + 1] = 0xbb;	//rbx
-  *((size_t *) (src + ptr_call_offset + 2)) = (size_t) g_func;
+  *((size_t *) (src + ptr_call_offset + 2)) = (size_t) closure_ptr->func;
   ptr_call_offset += 10;
 
 /*call rbx*/
@@ -282,21 +289,8 @@ closure_t
 closure_make (closure_t func, int argc, ...)
 {
 
-  int select = 0;
-  va_list factor;		//указатель va_list
-  va_start (factor, argc);	// устанавливаем указатель
-  for (int i = 0; i < argc; i++)
-    {
-      select = va_arg (factor, int);	// получаем значение текущего параметра типа int
-      g_head = closure_save_arg (g_head, select);
-    }
-  va_end (factor);		// завершаем обработку параметров
-
-  g_func = func;
-  g_argc = argc;
-
 /*Создаем функцию переходник, которая в своем коде имеет ссылку на данные замыкания
-и прыгает closure_pattern
+и прыгает в closure_pattern
 Функция должна вызываться как прототип функции closure_pattern,
 чтобы все параметры передались в функцию closure_pattern как есть
 */
@@ -309,8 +303,22 @@ closure_make (closure_t func, int argc, ...)
     print_error ("%s\n",
 		 "Ошибка вызова функции mmap для входного файла");
 
+  ((closure_data *) src)->func = func;
+  ((closure_data *) src)->argc = argc;
+  ((closure_data *) src)->src_len = src_len;
 
-  unsigned int ptr_call_offset = 0;
+  int select = 0;
+  va_list factor;		//указатель va_list
+  va_start (factor, argc);	// устанавливаем указатель
+  for (int i = 0; i < argc; i++)
+    {
+      select = va_arg (factor, int);	// получаем значение текущего параметра типа int
+      ((closure_data *) src)->head =
+	closure_save_arg (((closure_data *) src)->head, select);
+    }
+  va_end (factor);		// завершаем обработку параметров
+
+  unsigned int ptr_call_offset = sizeof (closure_data);
 
   /*mov eax, 0 */
   src[ptr_call_offset] = 0xb8;
@@ -319,7 +327,7 @@ closure_make (closure_t func, int argc, ...)
 
 /*mov rbx, func*/
   src[ptr_call_offset] = 0x48;
-  src[ptr_call_offset + 1] = 0xbb;	
+  src[ptr_call_offset + 1] = 0xbb;
   *((size_t *) (src + ptr_call_offset + 2)) = (size_t) closure_pattern;
   ptr_call_offset += 10;
 
@@ -331,19 +339,26 @@ closure_make (closure_t func, int argc, ...)
 /*mov rbx, data_ptr*/
   src[ptr_call_offset] = 0x48;
   src[ptr_call_offset + 1] = 0xbb;	//rbx
-  *((size_t *) (src + ptr_call_offset + 2)) = (size_t) g_head;
+  *((size_t *) (src + ptr_call_offset + 2)) = (size_t) src;
   ptr_call_offset += 10;
 
 /*прыгаем в ранее сохраненную функцию в стеке*/
   src[ptr_call_offset++] = 0xc3;
 
-  return (closure_t) src;
+  return (closure_t) (src + sizeof (closure_data));
 
 }
 
 void
 delete_closure (closure_t adder)
 {
+
+  closure_data *cd = (closure_data *) (adder - sizeof (closure_data));
+
+  while (cd->head)
+    cd->head = free_argv (cd->head);
+
+  munmap (cd, cd->src_len);
 
 }
 
@@ -358,6 +373,8 @@ main ()
   int res = func (8, 2, 3, 4, 5, 6, 7, 8, 9);
 
   printf ("2: %d \n", res);
+
+  delete_closure (func);
 
   return 0;
 }

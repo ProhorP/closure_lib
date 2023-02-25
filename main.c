@@ -37,6 +37,11 @@ print_error (const char *format, ...)
   exit (EXIT_FAILURE);
 }
 
+int fix_sum(int a, int b)
+{
+return a + b;
+}
+
 int
 sum (int n, ...)
 {
@@ -65,6 +70,8 @@ free_argv (argv_entry * head)
   return temp;
 }
 
+/*сохранение агрументов, добавляя новые в голову.
+Нужно для передачи параметров в пользовательскую функцию в обратном порядке*/
 argv_entry *
 closure_save_arg (argv_entry * head, int value)
 {
@@ -367,6 +374,7 @@ int
 main ()
 {
 
+#if 1
   printf ("1: %d \n", sum (9, 1, 2, 3, 4, 5, 6, 7, 8, 9));
 
   closure_t func = closure_make (sum, 2, 9, 1);
@@ -375,6 +383,22 @@ main ()
   printf ("2: %d \n", res);
 
   delete_closure (func);
+
+#endif
+
+#if 0
+  printf ("1: %d \n", fix_sum (1, 2));
+
+  closure_t func = closure_make (fix_sum, 1, 1);
+  int res = func (1, 2);
+
+  printf ("2: %d \n", res);
+
+  delete_closure (func);
+
+#endif
+
+
 
   return 0;
 }

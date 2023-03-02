@@ -6,22 +6,23 @@
 #include <sys/mman.h>
 
 typedef unsigned char byte;
-typedef int (*closure_t) (int, ...);
-typedef int (*closure_src_func_t) (void);
+typedef size_t (*closure_t) (size_t, ...);
+typedef size_t (*closure_src_func_t) (void);
 typedef struct argv_entry argv_entry;
 
 struct argv_entry
 {
   argv_entry *next;
-  int value;
+  size_t value;
 };
 
 struct closure_data
 {
-  int argc;
+  int argc_all;
   closure_t func;
   argv_entry *head;
   size_t src_len;
+  int argc_remains;
 };
 
 typedef struct closure_data closure_data;
@@ -37,43 +38,47 @@ print_error (const char *format, ...)
   exit (EXIT_FAILURE);
 }
 
-int fix_sum(int a, int b)
+size_t
+fix_sum (size_t a, size_t b)
 {
-return a + b;
+  return a + b;
 }
 
-int
-sum (int n, ...)
+size_t
+sum (size_t n, ...)
 {
-  int result = 0;
-  int select = 0;
+  size_t result = 0;
+  size_t select = 0;
   va_list factor;		//указатель va_list
   va_start (factor, n);		// устанавливаем указатель
-  for (int i = 0; i < n; i++)
+  for (size_t i = 0; i < n; i++)
     {
-      select = va_arg (factor, int);	// получаем значение текущего параметра типа int
-      printf ("%d\n", select);
+      select = va_arg (factor, size_t);	// получаем значение текущего параметра типа int
+      printf ("%ld\n", select);
       result += select;
     }
   va_end (factor);		// завершаем обработку параметров
   return result;
 }
 
-argv_entry *
+void
 free_argv (argv_entry * head)
 {
+
   if (!head)
-    return head;
+    return;
 
   argv_entry *temp = head->next;
   free (head);
-  return temp;
+
+  free_argv (temp);
+
 }
 
 /*сохранение агрументов, добавляя новые в голову.
 Нужно для передачи параметров в пользовательскую функцию в обратном порядке*/
 argv_entry *
-closure_save_arg (argv_entry * head, int value)
+closure_save_arg (argv_entry * head, size_t value)
 {
 
   argv_entry *new = (argv_entry *) malloc (sizeof (argv_entry));
@@ -86,26 +91,27 @@ closure_save_arg (argv_entry * head, int value)
 
 
 int
-closure_pattern (int argc, ...)
+closure_pattern (size_t dummy, ...)
 {
 
   closure_data *closure_ptr = NULL;
 
 asm (" movq %%rbx, %0;":"=r" (closure_ptr));
 
-  int select = 0;
+  int argc = closure_ptr->argc_remains;
+  size_t select = 0;
   argv_entry *local_argv_head = NULL, *temp_argv_head = NULL;
   va_list factor;		//указатель va_list
-  va_start (factor, argc);	// устанавливаем указатель
+  va_start (factor, dummy);	// устанавливаем указатель
   for (int i = 0; i < argc; i++)
     {
-      select = va_arg (factor, int);	// получаем значение текущего параметра типа int
+      select = va_arg (factor, size_t);	// получаем значение текущего параметра типа int
       local_argv_head = closure_save_arg (local_argv_head, select);
     }
   va_end (factor);		// завершаем обработку параметров
 
   byte *src;
-  int src_len = 100;
+  size_t src_len = 100;
   if ((src =
        mmap (0, src_len, PROT_EXEC | PROT_WRITE,
 	     MAP_PRIVATE | MAP_ANONYMOUS, 0, 0)) == MAP_FAILED)
@@ -113,7 +119,7 @@ asm (" movq %%rbx, %0;":"=r" (closure_ptr));
 		 "Ошибка вызова функции mmap для входного файла");
 
 
-  unsigned int ptr_call_offset = 0;
+  size_t ptr_call_offset = 0;
 
 /*пролог функции мпилятора gcc*/
   src[ptr_call_offset++] = 0xf3;
@@ -130,11 +136,10 @@ asm (" movq %%rbx, %0;":"=r" (closure_ptr));
   src[ptr_call_offset + 2] = 0xe5;
   ptr_call_offset += 3;
 
-  int argc_all = argc + closure_ptr->argc;
-  int use_stack = 0;
+  int argc_all = closure_ptr->argc_all;
   temp_argv_head = local_argv_head;
 
-  while (argc_all > 6)
+  while (argc_all)
     {
 /*если общее количество аргументов больше 6
 значит сначала аргументы помещаем в стек, пока не
@@ -143,112 +148,74 @@ asm (" movq %%rbx, %0;":"=r" (closure_ptr));
       if (!temp_argv_head)
 	temp_argv_head = closure_ptr->head;
 
-      src[ptr_call_offset] = 0x6a;
-      src[ptr_call_offset + 1] = temp_argv_head->value;
-      ptr_call_offset += 2;
-      use_stack += 8;
-      temp_argv_head = temp_argv_head->next;
-      argc_all--;
-    }
-
-/*заполняем регистры в обратном порядке*/
-/*mov r9d, value*/
-  if (argc_all == 6)
-    {
-      if (!temp_argv_head)
-	temp_argv_head = closure_ptr->head;
-
-      src[ptr_call_offset] = 0x41;
-      src[ptr_call_offset + 1] = 0xb9;
-      *((unsigned int *) (src + ptr_call_offset + 2)) =
-	(unsigned int) temp_argv_head->value;
-      ptr_call_offset += 6;
-      temp_argv_head = temp_argv_head->next;
-      argc_all--;
-    }
-
-/*заполняем регистры в обратном порядке*/
-/*mov r8d, value*/
-  if (argc_all == 5)
-    {
-      if (!temp_argv_head)
-	temp_argv_head = closure_ptr->head;
-
-      src[ptr_call_offset] = 0x41;
+/*mov rax, value*/
+      src[ptr_call_offset] = 0x48;
       src[ptr_call_offset + 1] = 0xb8;
-      *((unsigned int *) (src + ptr_call_offset + 2)) =
-	(unsigned int) temp_argv_head->value;
-      ptr_call_offset += 6;
+      *((size_t *) (src + ptr_call_offset + 2)) =
+	(size_t) temp_argv_head->value;
+      ptr_call_offset += 10;
+
+      if (argc_all > 6)
+	{
+/*в стек*/
+/*push rax*/
+	  src[ptr_call_offset++] = 0x50;
+
+	}
+      else if (argc_all == 6)
+	{
+	  /*заполняем регистры в обратном порядке */
+/*mov r9, rax*/
+	  src[ptr_call_offset++] = 0x49;
+	  src[ptr_call_offset++] = 0x89;
+	  src[ptr_call_offset++] = 0xc1;
+
+	}
+      else if (argc_all == 5)
+	{
+/*mov r8, rax*/
+	  src[ptr_call_offset++] = 0x49;
+	  src[ptr_call_offset++] = 0x89;
+	  src[ptr_call_offset++] = 0xc0;
+	}
+      else if (argc_all == 4)
+	{
+/*mov rcx, rax*/
+	  src[ptr_call_offset++] = 0x48;
+	  src[ptr_call_offset++] = 0x89;
+	  src[ptr_call_offset++] = 0xc1;
+
+	}
+      else if (argc_all == 3)
+	{
+/*mov rdx, rax*/
+	  src[ptr_call_offset++] = 0x48;
+	  src[ptr_call_offset++] = 0x89;
+	  src[ptr_call_offset++] = 0xc2;
+	}
+      else if (argc_all == 2)
+	{
+/*mov rsi, rax*/
+	  src[ptr_call_offset++] = 0x48;
+	  src[ptr_call_offset++] = 0x89;
+	  src[ptr_call_offset++] = 0xc6;
+	}
+      else if (argc_all == 1)
+	{
+/*mov rdi, rax*/
+	  src[ptr_call_offset++] = 0x48;
+	  src[ptr_call_offset++] = 0x89;
+	  src[ptr_call_offset++] = 0xc7;
+	}
       temp_argv_head = temp_argv_head->next;
       argc_all--;
     }
-
-/*mov ecx, value*/
-  if (argc_all == 4)
-    {
-      if (!temp_argv_head)
-	temp_argv_head = closure_ptr->head;
-
-      src[ptr_call_offset] = 0xb9;
-      *((unsigned int *) (src + ptr_call_offset + 1)) =
-	(unsigned int) temp_argv_head->value;
-      ptr_call_offset += 5;
-      temp_argv_head = temp_argv_head->next;
-      argc_all--;
-    }
-
-
-/*mov edx, value*/
-  if (argc_all == 3)
-    {
-      if (!temp_argv_head)
-	temp_argv_head = closure_ptr->head;
-
-      src[ptr_call_offset] = 0xba;
-      *((unsigned int *) (src + ptr_call_offset + 1)) =
-	(unsigned int) temp_argv_head->value;
-      ptr_call_offset += 5;
-      temp_argv_head = temp_argv_head->next;
-      argc_all--;
-    }
-
-
-/*mov esi, value*/
-  if (argc_all == 2)
-    {
-      if (!temp_argv_head)
-	temp_argv_head = closure_ptr->head;
-
-      src[ptr_call_offset] = 0xbe;
-      *((unsigned int *) (src + ptr_call_offset + 1)) =
-	(unsigned int) temp_argv_head->value;
-      ptr_call_offset += 5;
-      temp_argv_head = temp_argv_head->next;
-      argc_all--;
-    }
-
-
-/*mov edi, value*/
-  if (argc_all == 1)
-    {
-      if (!temp_argv_head)
-	temp_argv_head = closure_ptr->head;
-
-      src[ptr_call_offset] = 0xbf;
-      *((unsigned int *) (src + ptr_call_offset + 1)) =
-	(unsigned int) temp_argv_head->value;
-      ptr_call_offset += 5;
-      temp_argv_head = temp_argv_head->next;
-      argc_all--;
-    }
-
 
 /*Очищаем eax(так надо для вызова функций с переменным числом параметров) и вызываем функцию через rbx*/
-
-/*mov eax, 0*/
-  src[ptr_call_offset] = 0xb8;
-  *((unsigned int *) (src + ptr_call_offset + 1)) = (unsigned int) 0;
-  ptr_call_offset += 5;
+/*xor rax, rax*/
+  src[ptr_call_offset++] = 0x48;
+  src[ptr_call_offset++] = 0x31;
+  src[ptr_call_offset++] = 0xc0;
 
 /*mov rbx, func*/
   src[ptr_call_offset] = 0x48;
@@ -261,30 +228,16 @@ asm (" movq %%rbx, %0;":"=r" (closure_ptr));
   src[ptr_call_offset + 1] = 0xd3;	//rbx
   ptr_call_offset += 2;
 
-/*сдвиг указателя стека на размер переданных ранее параметров*/
-
-/*add rsp, use_stack*/
-  if (use_stack)
-    {
-
-      src[ptr_call_offset] = 0x48;
-      src[ptr_call_offset + 1] = 0x83;
-      src[ptr_call_offset + 2] = 0xc4;
-      src[ptr_call_offset + 3] = use_stack;
-      ptr_call_offset += 4;
-    }
-
 /*leave*/
   src[ptr_call_offset++] = 0xc9;
 
 /*ret*/
   src[ptr_call_offset++] = 0xc3;
 
-  int ret = ((closure_src_func_t) src) ();
+  size_t ret = ((closure_src_func_t) src) ();
 
 /*очищаем список локальных переменных*/
-  while (local_argv_head)
-    local_argv_head = free_argv (local_argv_head);
+  free_argv (local_argv_head);
 
   munmap (src, src_len);
 
@@ -293,7 +246,7 @@ asm (" movq %%rbx, %0;":"=r" (closure_ptr));
 }
 
 closure_t
-closure_make (closure_t func, int argc, ...)
+closure_make (closure_t func, int argc_all, int argc, ...)
 {
 
 /*Создаем функцию переходник, которая в своем коде имеет ссылку на данные замыкания
@@ -310,27 +263,29 @@ closure_make (closure_t func, int argc, ...)
     print_error ("%s\n",
 		 "Ошибка вызова функции mmap для входного файла");
 
-  ((closure_data *) src)->func = func;
-  ((closure_data *) src)->argc = argc;
-  ((closure_data *) src)->src_len = src_len;
+  closure_data *closure_ptr = (closure_data *) src;
 
-  int select = 0;
+  closure_ptr->func = func;
+  closure_ptr->argc_all = argc_all;
+  closure_ptr->argc_remains = argc_all - argc;
+  closure_ptr->src_len = src_len;
+
+  size_t select = 0;
   va_list factor;		//указатель va_list
   va_start (factor, argc);	// устанавливаем указатель
   for (int i = 0; i < argc; i++)
     {
-      select = va_arg (factor, int);	// получаем значение текущего параметра типа int
-      ((closure_data *) src)->head =
-	closure_save_arg (((closure_data *) src)->head, select);
+      select = va_arg (factor, size_t);	// получаем значение текущего параметра типа int
+      closure_ptr->head = closure_save_arg (closure_ptr->head, select);
     }
   va_end (factor);		// завершаем обработку параметров
 
-  unsigned int ptr_call_offset = sizeof (closure_data);
+  size_t ptr_call_offset = sizeof (closure_data);
 
-  /*mov eax, 0 */
-  src[ptr_call_offset] = 0xb8;
-  *((unsigned int *) (src + ptr_call_offset + 1)) = (unsigned int) 0;
-  ptr_call_offset += 5;
+/*xor rax, rax*/
+  src[ptr_call_offset++] = 0x48;
+  src[ptr_call_offset++] = 0x31;
+  src[ptr_call_offset++] = 0xc0;
 
 /*mov rbx, func*/
   src[ptr_call_offset] = 0x48;
@@ -362,8 +317,7 @@ delete_closure (closure_t adder)
 
   closure_data *cd = (closure_data *) (adder - sizeof (closure_data));
 
-  while (cd->head)
-    cd->head = free_argv (cd->head);
+  free_argv (cd->head);
 
   munmap (cd, cd->src_len);
 
@@ -375,24 +329,24 @@ main ()
 {
 
 #if 1
-  printf ("1: %d \n", sum (9, 1, 2, 3, 4, 5, 6, 7, 8, 9));
+  printf ("1: %ld \n", sum (9, 1, 2, 3, 4, 5, 6, 7, 8, 9));
 
-  closure_t func = closure_make (sum, 2, 9, 1);
-  int res = func (8, 2, 3, 4, 5, 6, 7, 8, 9);
+  closure_t func = closure_make (sum, 10, 2, 9, 1);
+  size_t res = func (0, 2, 3, 4, 5, 6, 7, 8, 9);
 
-  printf ("2: %d \n", res);
+  printf ("2: %ld \n", res);
 
   delete_closure (func);
 
 #endif
 
 #if 0
-  printf ("1: %d \n", fix_sum (1, 2));
+  printf ("1: %ld \n", fix_sum (1, 2));
 
-  closure_t func = closure_make (fix_sum, 1, 1);
-  int res = func (1, 2);
+  closure_t func = closure_make (fix_sum, 2, 1, 1);
+  size_t res = func (0, 2);
 
-  printf ("2: %d \n", res);
+  printf ("2: %ld \n", res);
 
   delete_closure (func);
 

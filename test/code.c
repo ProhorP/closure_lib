@@ -124,6 +124,17 @@ size_t offset = sizeof (closure_data);
   src[offset++] = 0x45;
   src[offset++] = 0xf4;//0x100-смещение_rbp
 
+/*local_argv_head = NULL*/
+/*xor rax, rax*/
+  src[offset++] = 0x48;
+  src[offset++] = 0x31;
+  src[offset++] = 0xc0;
+/* mov qword [rbp - 0x1c], rax */
+  src[offset++] = 0x48;
+  src[offset++] = 0x89;
+  src[offset++] = 0x45;
+  src[offset++] = 0xe4;//0x100-смещение_rbp
+
 /*int argc_remains = closure_ptr->argc_remains;*/
 /*mov rax, qword [rbp - 8]*/
   src[offset++] = 0x48;

@@ -59,8 +59,9 @@ int argc;
 closure_data *closure_ptr;
   int argc_all;
 
-if (argc == 7)
-    argc_all = 1;
+closure_ptr = NULL;
+//if (argc == 7)
+//    argc_all = 1;
 //int argc_remains = closure_ptr->argc_remains;
 //argv_entry *temp_argv_head;
 //free_argv(temp_argv_head);

@@ -45,6 +45,12 @@ fix_sum (size_t a, size_t b)
 }
 
 size_t
+fix_sum_char (char a, char b)
+{
+  return (size_t) (a + b);
+}
+
+size_t
 sum (size_t n, ...)
 {
   size_t result = 0;
@@ -89,8 +95,7 @@ closure_save_arg (argv_entry * head, size_t value)
 
 }
 
-
-int
+size_t
 closure_pattern (size_t dummy, ...)
 {
 
@@ -98,12 +103,14 @@ closure_pattern (size_t dummy, ...)
 
 asm (" movq %%rbx, %0;":"=r" (closure_ptr));
 
-  int argc = closure_ptr->argc_remains;
   size_t select = 0;
   argv_entry *local_argv_head = NULL, *temp_argv_head = NULL;
   va_list factor;		//указатель va_list
+
+  local_argv_head = closure_save_arg (local_argv_head, dummy);
+
   va_start (factor, dummy);	// устанавливаем указатель
-  for (int i = 0; i < argc; i++)
+  for (int i = 0; i < closure_ptr->argc_remains-1; i++)
     {
       select = va_arg (factor, size_t);	// получаем значение текущего параметра типа int
       local_argv_head = closure_save_arg (local_argv_head, select);
@@ -328,7 +335,7 @@ int
 main ()
 {
 
-#if 1
+#if 0
   printf ("1: %ld \n", sum (9, 1, 2, 3, 4, 5, 6, 7, 8, 9));
 
   closure_t func = closure_make (sum, 10, 2, 9, 1);
@@ -345,6 +352,18 @@ main ()
 
   closure_t func = closure_make (fix_sum, 2, 1, 1);
   size_t res = func (0, 2);
+
+  printf ("2: %ld \n", res);
+
+  delete_closure (func);
+
+#endif
+
+#if 1
+  printf ("1: %ld \n", fix_sum_char (2, 2));
+
+  closure_t func = closure_make (fix_sum_char, 2, 1, 2);
+  size_t res = func (2);
 
   printf ("2: %ld \n", res);
 

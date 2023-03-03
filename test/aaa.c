@@ -4,21 +4,14 @@
 #include <uchar.h>
 #include <sys/mman.h>
 
-size_t abc(size_t a, size_t b, size_t c, size_t d, size_t e, size_t f){
-
-return a+b+c+d+e+f;
-
-}
-
-size_t xyz(size_t a, size_t b, size_t c, size_t d, size_t e, size_t f){
-
-return abc(a,b,c,d,e,f);
-
+size_t abc_n(size_t dummy, ...)
+{
+size_t a = 1;
+return a + 1;
 }
 
 int main(){
 
-size_t res = xyz(0x1111111111111111,0x1111111111111111,0x1111111111111111,0x1111111111111111,0x1111111111111111,0x1111111111111111);
-
+size_t res1 = abc_n(1, 2, 3, 4, 5, 6, 7, 8);
 
 }

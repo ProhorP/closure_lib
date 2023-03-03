@@ -15,18 +15,91 @@ size_t offset = sizeof (closure_data);
 /*closure_data *closure_ptr = [rbp - 0x8]*/
 /*int argc = [rbp - 0xc]*/
 /*int argc_all = [rbp - 0x10]*/
-/*int use_stack = [rbp - 0x14]*/
+/*int argc_remains = [rbp - 0x14]*/
 /*argv_entry *local_argv_head = [rbp - 0x1c]*/
 /*argv_entry *temp_argv_head = [rbp - 0x24]*/
 /*size_t rax_save = [rbp - 0x2c]*/
-
+/*size_t r9 = [rbp - 0x34]*/
+/*size_t r8 = [rbp - 0x3c]*/
+/*size_t rcx = [rbp - 0x44]*/
+/*size_t rdx = [rbp - 0x4c]*/
+/*size_t rsi = [rbp - 0x54]*/
+/*size_t rdi = [rbp - 0x5c]*/
+/*size_t ptr_local_arg = [rbp - 0x64]*/
 
 /*выделяем место для локальных переменных*/
-/*sub rsp, 0x2c*/
+/*sub rsp, 0x64*/
   src[offset++] = 0x48;
   src[offset++] = 0x83;
   src[offset++] = 0xec;
-  src[offset++] = 0x2c;//смещение для переменных
+  src[offset++] = 0x64;//смещение для переменных
+
+
+/*Сохраняем аргументы в стек */
+/*mov qword [rbp - 0x34], r9*/
+  src[offset++] = 0x4c;
+  src[offset++] = 0x89;
+  src[offset++] = 0x8d;
+  src[offset++] = 0xcc;//смещение для переменных
+  src[offset++] = 0xff;
+  src[offset++] = 0xff;
+  src[offset++] = 0xff;
+/*mov qword [rbp - 0x3c], r8*/
+  src[offset++] = 0x4c;
+  src[offset++] = 0x89;
+  src[offset++] = 0x85;
+  src[offset++] = 0xc4;//смещение для переменных
+  src[offset++] = 0xff;
+  src[offset++] = 0xff;
+  src[offset++] = 0xff;
+/*mov qword [rbp - 0x44], rcx*/
+  src[offset++] = 0x48;
+  src[offset++] = 0x89;
+  src[offset++] = 0x8d;
+  src[offset++] = 0xbc;//смещение для переменных
+  src[offset++] = 0xff;
+  src[offset++] = 0xff;
+  src[offset++] = 0xff;
+ /*mov qword [rbp - 0x4c], rdx*/
+  src[offset++] = 0x48;
+  src[offset++] = 0x89;
+  src[offset++] = 0x95;
+  src[offset++] = 0xb4;//смещение для переменных
+  src[offset++] = 0xff;
+  src[offset++] = 0xff;
+  src[offset++] = 0xff;
+  /*mov qword [rbp - 0x54], rsi*/
+  src[offset++] = 0x48;
+  src[offset++] = 0x89;
+  src[offset++] = 0xb5;
+  src[offset++] = 0xac;//смещение для переменных
+  src[offset++] = 0xff;
+  src[offset++] = 0xff;
+  src[offset++] = 0xff;
+  /*mov qword [rbp - 0x5c], rdi*/
+  src[offset++] = 0x48;
+  src[offset++] = 0x89;
+  src[offset++] = 0xbd;
+  src[offset++] = 0xa4;//смещение для переменных
+  src[offset++] = 0xff;
+  src[offset++] = 0xff;
+  src[offset++] = 0xff;
+
+/*ptr_local_arg = addr(rdi[rbp - 0x5c])*/
+/*mov rax, rbp*/
+  src[offset++] = 0x48;
+  src[offset++] = 0x89;
+  src[offset++] = 0xe8;
+/*sub rax, 0x5c*/
+  src[offset++] = 0x48;
+  src[offset++] = 0x83;
+  src[offset++] = 0xe8;
+  src[offset++] = 0x5c;
+/* mov qword [rbp - 0x64], rax */
+  src[offset++] = 0x48;
+  src[offset++] = 0x89;
+  src[offset++] = 0x45;
+  src[offset++] = 0x9c;//0x100-смещение_rbp
 
 /*closure_ptr = 0x948349384983*/
 /*сохраняем в стеке указатель на данные замыкания*/
@@ -41,6 +114,158 @@ size_t offset = sizeof (closure_data);
   src[offset++] = 0x45;
   src[offset++] = 0xf8;//0x100-смещение_rbp
 
+/*argc = 0;*/
+/*xor rax, rax*/
+  src[offset++] = 0x48;
+  src[offset++] = 0x31;
+  src[offset++] = 0xc0;
+/*mov dword [rbp - 0xc], eax*/
+  src[offset++] = 0x89;
+  src[offset++] = 0x45;
+  src[offset++] = 0xf4;//0x100-смещение_rbp
+
+/*int argc_remains = closure_ptr->argc_remains;*/
+/*mov rax, qword [rbp - 8]*/
+  src[offset++] = 0x48;
+  src[offset++] = 0x8b;
+  src[offset++] = 0x45;
+  src[offset++] = 0xf8;//0x100-смещение_rbp
+/*mov eax, dword [rax + 0x20]*/
+  src[offset++] = 0x8b;
+  src[offset++] = 0x40;
+  src[offset++] = 0x20;
+/*mov dword [rbp - 0x14], eax*/
+  src[offset++] = 0x89;
+  src[offset++] = 0x45;
+  src[offset++] = 0xec;//0x100-смещение_rbp
+
+/*Начало while (argc_remains)*/
+/*jmp смещение проверки*/
+  src[offset++] = 0xeb;
+  src[offset++] = 0x4a;//относительное смещение(длина тела цикла)
+
+/*Начало тела цикла*/
+
+/*argc++;*/
+/*add dword [rbp - 0xc], 1*/
+  src[offset++] = 0x83;
+  src[offset++] = 0x45;
+  src[offset++] = 0xf4;//0x100-смещение_rbp
+  src[offset++] = 0x01;
+
+/*if (argc == 7)
+     ptr_local_arg = rbp+0x8;
+адрес последнего аргумента переданного через стек = rbp+0x8
+*/
+/*cmp dword [rbp - 0xc, 7*/
+  src[offset++] = 0x83;
+  src[offset++] = 0x7d;
+  src[offset++] = 0xf4;
+  src[offset++] = 0x07;
+/*jne количество байт до конца условия*/
+  src[offset++] = 0x75;
+  src[offset++] = 0x0b; //относительное смещение
+/*ptr_local_arg = rbp + 0x8*/
+/*mov rax, rbp*/
+  src[offset++] = 0x48;
+  src[offset++] = 0x89;
+  src[offset++] = 0xe8;
+/*add rax, 0x8*/
+  src[offset++] = 0x48;
+  src[offset++] = 0x83;
+  src[offset++] = 0xc0;
+  src[offset++] = 0x08;
+/* mov qword [rbp - 0x64], rax */
+  src[offset++] = 0x48;
+  src[offset++] = 0x89;
+  src[offset++] = 0x45;
+  src[offset++] = 0x9c;//0x100-смещение_rbp
+
+/*сохраняем локальные переменные в связный список*/
+/*local_argv_head = closure_save_arg (local_argv_head, qword[ptr_local_arg])*/
+/*помещаем 2-й аргумент в rsi*/
+/*mov rax, qword [rbp - 0x64]*/
+  src[offset++] = 0x48;
+  src[offset++] = 0x8b;
+  src[offset++] = 0x45;
+  src[offset++] = 0x9c;//0x100-смещение_rbp
+/*mov rsi, qword [rax]*/
+  src[offset++] = 0x48;
+  src[offset++] = 0x8b;
+  src[offset++] = 0x30;
+/*помещаем 1-й аргумент в регистр rdi*/
+/*mov rax, qword [rbp - 0x1c]*/
+  src[offset++] = 0x48;
+  src[offset++] = 0x8b;
+  src[offset++] = 0x45;
+  src[offset++] = 0xe4;//0x100-смещение_rbp
+/*mov rdi, rax*/
+  src[offset++] = 0x48;
+  src[offset++] = 0x89;
+  src[offset++] = 0xc7;
+
+/*Делаем вызов функции*/
+/*сохраняем в стеке IP первого байта после вызова функции*/
+/*mov rax, addr*/
+  src[offset] = 0x48;
+  src[offset + 1] = 0xb8;
+//+количество байт до первого байта после вызова функции
+  *((size_t *) (src + offset + 2)) = (size_t) (src + offset+26);
+  offset += 10;
+/*push rax*/
+  src[offset++] = 0x50;
+/*mov rax, func*/
+  src[offset] = 0x48;
+  src[offset + 1] = 0xb8;
+  *((size_t *) (src + offset + 2)) = (size_t) closure_save_arg;
+  offset += 10;
+/*push rax*/
+  src[offset++] = 0x50;
+/*xor rax, rax*/
+  src[offset++] = 0x48;
+  src[offset++] = 0x31;
+  src[offset++] = 0xc0;
+/*прыгаем в ранее сохраненную функцию в стеке*/
+/*ret*/
+  src[offset++] = 0xc3;
+
+/*сохраняем результат в local_argv_head*/
+/*mov qword [rbp - 0x1с], rax*/
+  src[offset++] = 0x48;
+  src[offset++] = 0x89;
+  src[offset++] = 0x45;
+  src[offset++] = 0xe4;//0x100-смещение_rbp
+
+/*ptr_local_arg+=8;*/
+/*add qword [rbp - 0x64], 8*/
+  src[offset++] = 0x48;
+  src[offset++] = 0x83;
+  src[offset++] = 0x45;
+  src[offset++] = 0x9c;
+  src[offset++] = 0x08;
+
+/*argc_remains--;*/
+/*sub dword [rbp - 0x14], 1*/
+  src[offset++] = 0x83;
+  src[offset++] = 0x6d;
+  src[offset++] = 0xec;//0x100-смещение_rbp
+  src[offset++] = 0x01;
+
+/*Конец тела цикла*/
+
+/*cmp dword [rbp - 0x14], 0*/
+  src[offset++] = 0x83;
+  src[offset++] = 0x7d;
+  src[offset++] = 0xec;//0x100-смещение_rbp
+  src[offset++] = 0x00;
+/*jne конец_условия*/
+  src[offset++] = 0x75;
+  src[offset++] = 0xb0; //относительное смещение(-6 - длина тела цикла)
+
+/*Конец while (argc_remains)*/
+
+
+
 /*argc_all = closure_ptr->argc_all;*/
 /*mov rax, qword [rbp - 8]*/
   src[offset++] = 0x48;
@@ -54,7 +279,6 @@ size_t offset = sizeof (closure_data);
   src[offset++] = 0x89;
   src[offset++] = 0x45;
   src[offset++] = 0xf0;//0x100-смещение_rbp
-
 
 /*temp_argv_head = local_argv_head;*/
 /*mov rax, qword [rbp - 0x1c]*/

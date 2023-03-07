@@ -90,9 +90,9 @@ argv_entry *new = NULL;
   if (size)
     {
       new = (argv_entry *) malloc (sizeof (argv_entry) + size);
-      new->value =(size_t) ((char*)new + sizeof (argv_entry));
+      new->value =(size_t) ((void*)new + sizeof (argv_entry));
       new->next = head;
-      memcpy ((char*)new->value, (const char *)value, size);
+      memcpy ((void*)new->value, (const void *)value, size);
 
     }
   else

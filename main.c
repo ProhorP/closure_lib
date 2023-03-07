@@ -4,16 +4,17 @@
 #include <stdlib.h>
 #include <uchar.h>
 #include <sys/mman.h>
+#include <stdint.h>
 
 typedef unsigned char byte;
-typedef size_t (*closure_t) (size_t, ...);
-typedef size_t (*closure_src_func_t) (void);
+typedef intptr_t (*closure_t) (intptr_t, ...);
+typedef intptr_t (*closure_src_func_t) (void);
 typedef struct argv_entry argv_entry;
 
 struct argv_entry
 {
   argv_entry *next;
-  size_t value;
+  intptr_t value;
 };
 
 struct closure_data
@@ -21,7 +22,7 @@ struct closure_data
   int argc_all;
   closure_t func;
   argv_entry *head;
-  size_t src_len;
+  intptr_t src_len;
   int argc_remains;
 };
 
@@ -38,28 +39,28 @@ print_error (const char *format, ...)
   exit (EXIT_FAILURE);
 }
 
-size_t
-fix_sum (size_t a, size_t b)
+intptr_t
+fix_sum (intptr_t a, intptr_t b)
 {
   return a + b;
 }
 
-size_t
+intptr_t
 fix_sum_char (char a, char b)
 {
-  return (size_t) (a + b);
+  return (intptr_t) (a + b);
 }
 
-size_t
-sum (size_t n, ...)
+intptr_t
+sum (intptr_t n, ...)
 {
-  size_t result = 0;
-  size_t select = 0;
+  intptr_t result = 0;
+  intptr_t select = 0;
   va_list factor;		//указатель va_list
   va_start (factor, n);		// устанавливаем указатель
-  for (size_t i = 0; i < n; i++)
+  for (intptr_t i = 0; i < n; i++)
     {
-      select = va_arg (factor, size_t);	// получаем значение текущего параметра типа int
+      select = va_arg (factor, intptr_t);	// получаем значение текущего параметра типа int
       printf ("%ld\n", select);
       result += select;
     }
@@ -84,13 +85,13 @@ free_argv (argv_entry * head)
 /*сохранение агрументов, добавляя новые в голову.
 Нужно для передачи параметров в пользовательскую функцию в обратном порядке*/
 argv_entry *
-closure_save_arg (argv_entry * head, size_t value, size_t size)
+closure_save_arg (argv_entry * head, intptr_t value, intptr_t size)
 {
 argv_entry *new = NULL;
   if (size)
     {
       new = (argv_entry *) malloc (sizeof (argv_entry) + size);
-      new->value =(size_t) ((void*)new + sizeof (argv_entry));
+      new->value =(intptr_t) ((void*)new + sizeof (argv_entry));
       new->next = head;
       memcpy ((void*)new->value, (const void *)value, size);
 
@@ -124,18 +125,18 @@ closure_make (closure_t func, int argc_all, int argc, ...)
   closure_ptr->argc_remains = argc_all - argc;
   closure_ptr->src_len = src_len;
 
-  size_t value = 0, size = 0;
+  intptr_t value = 0, size = 0;
   va_list factor;		//указатель va_list
   va_start (factor, argc);	// устанавливаем указатель
   for (int i = 0; i < argc; i++)
     {
-      value = va_arg (factor, size_t);	// получаем значение текущего параметра типа int
-      size = va_arg (factor, size_t);	// получаем значение текущего параметра типа int
+      value = va_arg (factor, intptr_t);	// получаем значение текущего параметра типа int
+      size = va_arg (factor, intptr_t);	// получаем значение текущего параметра типа int
       closure_ptr->head = closure_save_arg (closure_ptr->head, value, size);
     }
   va_end (factor);		// завершаем обработку параметров
 
-  size_t offset = sizeof (closure_data);
+  intptr_t offset = sizeof (closure_data);
 
 /*пролог функции компилятора gcc*/
   src[offset++] = 0xf3;
@@ -155,14 +156,14 @@ closure_make (closure_t func, int argc_all, int argc, ...)
 /*int argc_remains = [rbp - 0x14]*/
 /*argv_entry *local_argv_head = [rbp - 0x1c]*/
 /*argv_entry *temp_argv_head = [rbp - 0x24]*/
-/*size_t rax_save = [rbp - 0x2c]*/
-/*size_t r9 = [rbp - 0x34]*/
-/*size_t r8 = [rbp - 0x3c]*/
-/*size_t rcx = [rbp - 0x44]*/
-/*size_t rdx = [rbp - 0x4c]*/
-/*size_t rsi = [rbp - 0x54]*/
-/*size_t rdi = [rbp - 0x5c]*/
-/*size_t ptr_local_arg = [rbp - 0x64]*/
+/*intptr_t rax_save = [rbp - 0x2c]*/
+/*intptr_t r9 = [rbp - 0x34]*/
+/*intptr_t r8 = [rbp - 0x3c]*/
+/*intptr_t rcx = [rbp - 0x44]*/
+/*intptr_t rdx = [rbp - 0x4c]*/
+/*intptr_t rsi = [rbp - 0x54]*/
+/*intptr_t rdi = [rbp - 0x5c]*/
+/*intptr_t ptr_local_arg = [rbp - 0x64]*/
 
 /*выделяем место для локальных переменных*/
 /*sub rsp, 0x64*/
@@ -242,7 +243,7 @@ closure_make (closure_t func, int argc_all, int argc, ...)
 /*mov rax, closure_ptr*/
   src[offset] = 0x48;
   src[offset + 1] = 0xb8;
-  *((size_t *) (src + offset + 2)) = (size_t) closure_ptr;
+  *((intptr_t *) (src + offset + 2)) = (intptr_t) closure_ptr;
   offset += 10;
 /* mov qword [rbp - 8], rax */
   src[offset++] = 0x48;
@@ -289,7 +290,7 @@ closure_make (closure_t func, int argc_all, int argc, ...)
 /*Начало while (argc_remains)*/
 /*jmp смещение проверки*/
   src[offset++] = 0xeb;
-  src[offset++] = 0x56;		//относительное смещение(длина тела цикла)
+  src[offset++] = 0x5a;		//относительное смещение(длина тела цикла)
 
 /*Начало тела цикла*/
 
@@ -359,6 +360,12 @@ closure_make (closure_t func, int argc_all, int argc, ...)
   src[offset++] = 0x45;
   src[offset++] = 0x9c;
   src[offset++] = 0x08;
+/*argc++;*/
+/*add dword [rbp - 0xc], 1*/
+  src[offset++] = 0x83;
+  src[offset++] = 0x45;
+  src[offset++] = 0xf4;		//0x100-смещение_rbp
+  src[offset++] = 0x01;
 /*mov rax, qword [rbp - 0x64]*/
   src[offset++] = 0x48;
   src[offset++] = 0x8b;
@@ -369,20 +376,21 @@ closure_make (closure_t func, int argc_all, int argc, ...)
   src[offset++] = 0x8b;
   src[offset++] = 0x10;
 
+
 /*Делаем вызов функции*/
 /*сохраняем в стеке IP первого байта после вызова функции*/
 /*mov rax, addr*/
   src[offset] = 0x48;
   src[offset + 1] = 0xb8;
 //+количество байт до первого байта после вызова функции
-  *((size_t *) (src + offset + 2)) = (size_t) (src + offset + 26);
+  *((intptr_t *) (src + offset + 2)) = (intptr_t) (src + offset + 26);
   offset += 10;
 /*push rax*/
   src[offset++] = 0x50;
 /*mov rax, func*/
   src[offset] = 0x48;
   src[offset + 1] = 0xb8;
-  *((size_t *) (src + offset + 2)) = (size_t) closure_save_arg;
+  *((intptr_t *) (src + offset + 2)) = (intptr_t) closure_save_arg;
   offset += 10;
 /*push rax*/
   src[offset++] = 0x50;
@@ -425,7 +433,7 @@ closure_make (closure_t func, int argc_all, int argc, ...)
   src[offset++] = 0x00;
 /*jne конец_условия*/
   src[offset++] = 0x75;
-  src[offset++] = 0xa4;		//относительное смещение(-6 - длина тела цикла)
+  src[offset++] = 0xa0;		//относительное смещение(-6 - длина тела цикла)
 
 /*Конец while (argc_remains)*/
 
@@ -680,14 +688,14 @@ closure_make (closure_t func, int argc_all, int argc, ...)
   src[offset] = 0x48;
   src[offset + 1] = 0xb8;
 //+количество байт до первого байта после вызова функции
-  *((size_t *) (src + offset + 2)) = (size_t) (src + offset + 26);
+  *((intptr_t *) (src + offset + 2)) = (intptr_t) (src + offset + 26);
   offset += 10;
 /*push rax*/
   src[offset++] = 0x50;
 /*mov rax, func*/
   src[offset] = 0x48;
   src[offset + 1] = 0xb8;
-  *((size_t *) (src + offset + 2)) = (size_t) closure_ptr->func;
+  *((intptr_t *) (src + offset + 2)) = (intptr_t) closure_ptr->func;
   offset += 10;
 /*push rax*/
   src[offset++] = 0x50;
@@ -724,14 +732,14 @@ closure_make (closure_t func, int argc_all, int argc, ...)
   src[offset] = 0x48;
   src[offset + 1] = 0xb8;
 //+количество байт до первого байта после вызова функции
-  *((size_t *) (src + offset + 2)) = (size_t) (src + offset + 26);
+  *((intptr_t *) (src + offset + 2)) = (intptr_t) (src + offset + 26);
   offset += 10;
 /*push rax*/
   src[offset++] = 0x50;
 /*mov rax, func*/
   src[offset] = 0x48;
   src[offset + 1] = 0xb8;
-  *((size_t *) (src + offset + 2)) = (size_t) free_argv;
+  *((intptr_t *) (src + offset + 2)) = (intptr_t) free_argv;
   offset += 10;
 /*push rax*/
   src[offset++] = 0x50;
@@ -769,7 +777,7 @@ void
 delete_closure (closure_t adder)
 {
 
-  closure_data *cd = (closure_data *) ((size_t)adder - sizeof (closure_data));
+  closure_data *cd = (closure_data *) ((intptr_t)adder - sizeof (closure_data));
 
   free_argv (cd->head);
 
@@ -781,68 +789,49 @@ int
 main ()
 {
 
-#if 0
+#if 1
   printf ("1: %ld \n", sum (9, 1, 2, 3, 4, 5, 6, 7, 8, 9));
 
-  closure_t func = closure_make (sum, 10, 2, 9, 1);
-  size_t res = func (2, 3, 4, 5, 6, 7, 8, 9);
+  closure_t func = closure_make (sum, 10, 2, 9,0, 1,0);
+  intptr_t res = func (2,0, 3,0, 4,0, 5,0, 6,0, 7,0, 8,0, 9,0);
 
   printf ("2: %ld \n", res);
 
-  closure_t func_new = closure_make_new (sum, 10, 2, 9, 1);
-  size_t res_new = func_new (2, 3, 4, 5, 6, 7, 8, 9);
-
-  printf ("3: %ld \n", res_new);
-
   delete_closure (func);
-  delete_closure (func_new);
 
 #endif
 
 #if 0
   printf ("1: %ld \n", fix_sum (1, 2));
 
-  closure_t func = closure_make (fix_sum, 2, 1, 1);
-  size_t res = func (2);
+  closure_t func = closure_make (fix_sum, 2, 1, 1,0);
+  intptr_t res = func (2,0);
 
   printf ("2: %ld \n", res);
 
-  closure_t func_new = closure_make_new (fix_sum, 2, 1, 1);
-  size_t res_new = func_new (2);
-
-  printf ("3: %ld \n", res_new);
-
   delete_closure (func);
-  delete_closure (func_new);
 
 #endif
 
 #if 0
   printf ("1: %ld \n", fix_sum_char (2, 2));
 
-  closure_t func = closure_make (fix_sum_char, 2, 1, 2);
-  size_t res = func (2);
+  closure_t func = closure_make (fix_sum_char, 2, 1, 2,0);
+  intptr_t res = func (2,0);
 
   printf ("2: %ld \n", res);
 
-  closure_t func_new = closure_make_new (fix_sum_char, 2, 1, 2);
-  size_t res_new = func_new (2);
-
-  printf ("3: %ld \n", res_new);
-
-
   delete_closure (func);
-  delete_closure (func_new);
 
 #endif
 
-#if 1
+#if 0
   char *pattern = "%s%d\n";
   printf (pattern, "Простая функция", 5);
 
   char *text = "Функция замыкания";
   closure_t func = closure_make (printf, 3, 1, pattern, strlen (pattern) + 1);
-  size_t res = func (text, strlen (text) + 1, 5, 0);
+  intptr_t res = func (text, strlen (text) + 1, 5, 0);
 
   delete_closure (func);
 

@@ -3,6 +3,7 @@
 #include <stdlib.h>
 #include <uchar.h>
 #include <sys/mman.h>
+#include <stdint.h>
 
 typedef unsigned char byte;
 typedef size_t (*closure_t) (size_t, ...);
@@ -60,6 +61,7 @@ int argc;
 closure_data *closure_ptr;
   int argc_all;
 
+intptr_t a = NULL;
 closure_ptr = NULL;
 //if (argc == 7)
 //    argc_all = 1;

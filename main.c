@@ -84,242 +84,29 @@ free_argv (argv_entry * head)
 /*сохранение агрументов, добавляя новые в голову.
 Нужно для передачи параметров в пользовательскую функцию в обратном порядке*/
 argv_entry *
-closure_save_arg (argv_entry * head, size_t value)
+closure_save_arg (argv_entry * head, size_t value, size_t size)
 {
+argv_entry *new = NULL;
+  if (size)
+    {
+      new = (argv_entry *) malloc (sizeof (argv_entry) + size);
+      new->value =(size_t) ((char*)new + sizeof (argv_entry));
+      new->next = head;
+      memcpy ((char*)new->value, (const char *)value, size);
 
-  argv_entry *new = (argv_entry *) malloc (sizeof (argv_entry));
-  new->value = value;
-  new->next = head;
-
+    }
+  else
+    {
+      new = (argv_entry *) malloc (sizeof (argv_entry));
+      new->value = value;
+      new->next = head;
+    }
   return new;
-
-}
-
-size_t
-closure_pattern (size_t dummy, ...)
-{
-
-  closure_data *closure_ptr = NULL;
-
-asm (" movq %%rbx, %0;":"=r" (closure_ptr));
-
-  size_t select = 0;
-  argv_entry *local_argv_head = NULL, *temp_argv_head = NULL;
-  va_list factor;		//указатель va_list
-
-  local_argv_head = closure_save_arg (local_argv_head, dummy);
-
-  va_start (factor, dummy);	// устанавливаем указатель
-  for (int i = 0; i < closure_ptr->argc_remains-1; i++)
-    {
-      select = va_arg (factor, size_t);	// получаем значение текущего параметра типа int
-      local_argv_head = closure_save_arg (local_argv_head, select);
-    }
-  va_end (factor);		// завершаем обработку параметров
-
-  byte *src;
-  size_t src_len = 100;
-  if ((src =
-       mmap (0, src_len, PROT_EXEC | PROT_WRITE,
-	     MAP_PRIVATE | MAP_ANONYMOUS, 0, 0)) == MAP_FAILED)
-    print_error ("%s\n",
-		 "Ошибка вызова функции mmap для входного файла");
-
-
-  size_t ptr_call_offset = 0;
-
-/*пролог функции мпилятора gcc*/
-  src[ptr_call_offset++] = 0xf3;
-  src[ptr_call_offset++] = 0x0f;
-  src[ptr_call_offset++] = 0x1e;
-  src[ptr_call_offset++] = 0xfa;
-
-/*push rbp*/
-  src[ptr_call_offset++] = 0x55;
-
-/*mov rbp, rsp*/
-  src[ptr_call_offset] = 0x48;
-  src[ptr_call_offset + 1] = 0x89;
-  src[ptr_call_offset + 2] = 0xe5;
-  ptr_call_offset += 3;
-
-  int argc_all = closure_ptr->argc_all;
-  temp_argv_head = local_argv_head;
-
-  while (argc_all)
-    {
-/*если общее количество аргументов больше 6
-значит сначала аргументы помещаем в стек, пока не
-останется 6 агрументов для передачи через регистры*/
-
-      if (!temp_argv_head)
-	temp_argv_head = closure_ptr->head;
-
-/*mov rax, value*/
-      src[ptr_call_offset] = 0x48;
-      src[ptr_call_offset + 1] = 0xb8;
-      *((size_t *) (src + ptr_call_offset + 2)) =
-	(size_t) temp_argv_head->value;
-      ptr_call_offset += 10;
-
-      if (argc_all > 6)
-	{
-/*в стек*/
-/*push rax*/
-	  src[ptr_call_offset++] = 0x50;
-
-	}
-      else if (argc_all == 6)
-	{
-	  /*заполняем регистры в обратном порядке */
-/*mov r9, rax*/
-	  src[ptr_call_offset++] = 0x49;
-	  src[ptr_call_offset++] = 0x89;
-	  src[ptr_call_offset++] = 0xc1;
-
-	}
-      else if (argc_all == 5)
-	{
-/*mov r8, rax*/
-	  src[ptr_call_offset++] = 0x49;
-	  src[ptr_call_offset++] = 0x89;
-	  src[ptr_call_offset++] = 0xc0;
-	}
-      else if (argc_all == 4)
-	{
-/*mov rcx, rax*/
-	  src[ptr_call_offset++] = 0x48;
-	  src[ptr_call_offset++] = 0x89;
-	  src[ptr_call_offset++] = 0xc1;
-
-	}
-      else if (argc_all == 3)
-	{
-/*mov rdx, rax*/
-	  src[ptr_call_offset++] = 0x48;
-	  src[ptr_call_offset++] = 0x89;
-	  src[ptr_call_offset++] = 0xc2;
-	}
-      else if (argc_all == 2)
-	{
-/*mov rsi, rax*/
-	  src[ptr_call_offset++] = 0x48;
-	  src[ptr_call_offset++] = 0x89;
-	  src[ptr_call_offset++] = 0xc6;
-	}
-      else if (argc_all == 1)
-	{
-/*mov rdi, rax*/
-	  src[ptr_call_offset++] = 0x48;
-	  src[ptr_call_offset++] = 0x89;
-	  src[ptr_call_offset++] = 0xc7;
-	}
-      temp_argv_head = temp_argv_head->next;
-      argc_all--;
-    }
-
-/*Очищаем eax(так надо для вызова функций с переменным числом параметров) и вызываем функцию через rbx*/
-/*xor rax, rax*/
-  src[ptr_call_offset++] = 0x48;
-  src[ptr_call_offset++] = 0x31;
-  src[ptr_call_offset++] = 0xc0;
-
-/*mov rbx, func*/
-  src[ptr_call_offset] = 0x48;
-  src[ptr_call_offset + 1] = 0xbb;	//rbx
-  *((size_t *) (src + ptr_call_offset + 2)) = (size_t) closure_ptr->func;
-  ptr_call_offset += 10;
-
-/*call rbx*/
-  src[ptr_call_offset] = 0xff;
-  src[ptr_call_offset + 1] = 0xd3;	//rbx
-  ptr_call_offset += 2;
-
-/*leave*/
-  src[ptr_call_offset++] = 0xc9;
-
-/*ret*/
-  src[ptr_call_offset++] = 0xc3;
-
-  size_t ret = ((closure_src_func_t) src) ();
-
-/*очищаем список локальных переменных*/
-  free_argv (local_argv_head);
-
-  munmap (src, src_len);
-
-  return ret;
 
 }
 
 closure_t
 closure_make (closure_t func, int argc_all, int argc, ...)
-{
-
-/*Создаем функцию переходник, которая в своем коде имеет ссылку на данные замыкания
-и прыгает в closure_pattern
-Функция должна вызываться как прототип функции closure_pattern,
-чтобы все параметры передались в функцию closure_pattern как есть
-*/
-
-  byte *src;
-  int src_len = 100;
-  if ((src =
-       mmap (0, src_len, PROT_EXEC | PROT_WRITE,
-	     MAP_PRIVATE | MAP_ANONYMOUS, 0, 0)) == MAP_FAILED)
-    print_error ("%s\n",
-		 "Ошибка вызова функции mmap для входного файла");
-
-  closure_data *closure_ptr = (closure_data *) src;
-
-  closure_ptr->func = func;
-  closure_ptr->argc_all = argc_all;
-  closure_ptr->argc_remains = argc_all - argc;
-  closure_ptr->src_len = src_len;
-
-  size_t select = 0;
-  va_list factor;		//указатель va_list
-  va_start (factor, argc);	// устанавливаем указатель
-  for (int i = 0; i < argc; i++)
-    {
-      select = va_arg (factor, size_t);	// получаем значение текущего параметра типа int
-      closure_ptr->head = closure_save_arg (closure_ptr->head, select);
-    }
-  va_end (factor);		// завершаем обработку параметров
-
-  size_t ptr_call_offset = sizeof (closure_data);
-
-/*xor rax, rax*/
-  src[ptr_call_offset++] = 0x48;
-  src[ptr_call_offset++] = 0x31;
-  src[ptr_call_offset++] = 0xc0;
-
-/*mov rbx, func*/
-  src[ptr_call_offset] = 0x48;
-  src[ptr_call_offset + 1] = 0xbb;
-  *((size_t *) (src + ptr_call_offset + 2)) = (size_t) closure_pattern;
-  ptr_call_offset += 10;
-
-/*сохранили в стеке адрес вызываемой функции*/
-/*push rbx*/
-  src[ptr_call_offset++] = 0x53;
-
-/*этот же регистр кладем ссылку на данные замыкания*/
-/*mov rbx, data_ptr*/
-  src[ptr_call_offset] = 0x48;
-  src[ptr_call_offset + 1] = 0xbb;	//rbx
-  *((size_t *) (src + ptr_call_offset + 2)) = (size_t) src;
-  ptr_call_offset += 10;
-
-/*прыгаем в ранее сохраненную функцию в стеке*/
-  src[ptr_call_offset++] = 0xc3;
-
-  return (closure_t) (src + sizeof (closure_data));
-
-}
-
-closure_t
-closure_make_new (closure_t func, int argc_all, int argc, ...)
 {
 
   byte *src;
@@ -337,17 +124,18 @@ closure_make_new (closure_t func, int argc_all, int argc, ...)
   closure_ptr->argc_remains = argc_all - argc;
   closure_ptr->src_len = src_len;
 
-  size_t select = 0;
+  size_t value = 0, size = 0;
   va_list factor;		//указатель va_list
   va_start (factor, argc);	// устанавливаем указатель
   for (int i = 0; i < argc; i++)
     {
-      select = va_arg (factor, size_t);	// получаем значение текущего параметра типа int
-      closure_ptr->head = closure_save_arg (closure_ptr->head, select);
+      value = va_arg (factor, size_t);	// получаем значение текущего параметра типа int
+      size = va_arg (factor, size_t);	// получаем значение текущего параметра типа int
+      closure_ptr->head = closure_save_arg (closure_ptr->head, value, size);
     }
   va_end (factor);		// завершаем обработку параметров
 
-size_t offset = sizeof (closure_data);
+  size_t offset = sizeof (closure_data);
 
 /*пролог функции компилятора gcc*/
   src[offset++] = 0xf3;
@@ -381,14 +169,14 @@ size_t offset = sizeof (closure_data);
   src[offset++] = 0x48;
   src[offset++] = 0x83;
   src[offset++] = 0xec;
-  src[offset++] = 0x64;//смещение для переменных
+  src[offset++] = 0x64;		//смещение для переменных
 
 /*Сохраняем аргументы в стек */
 /*mov qword [rbp - 0x34], r9*/
   src[offset++] = 0x4c;
   src[offset++] = 0x89;
   src[offset++] = 0x8d;
-  src[offset++] = 0xcc;//смещение для переменных
+  src[offset++] = 0xcc;		//смещение для переменных
   src[offset++] = 0xff;
   src[offset++] = 0xff;
   src[offset++] = 0xff;
@@ -396,7 +184,7 @@ size_t offset = sizeof (closure_data);
   src[offset++] = 0x4c;
   src[offset++] = 0x89;
   src[offset++] = 0x85;
-  src[offset++] = 0xc4;//смещение для переменных
+  src[offset++] = 0xc4;		//смещение для переменных
   src[offset++] = 0xff;
   src[offset++] = 0xff;
   src[offset++] = 0xff;
@@ -404,31 +192,31 @@ size_t offset = sizeof (closure_data);
   src[offset++] = 0x48;
   src[offset++] = 0x89;
   src[offset++] = 0x8d;
-  src[offset++] = 0xbc;//смещение для переменных
+  src[offset++] = 0xbc;		//смещение для переменных
   src[offset++] = 0xff;
   src[offset++] = 0xff;
   src[offset++] = 0xff;
- /*mov qword [rbp - 0x4c], rdx*/
+  /*mov qword [rbp - 0x4c], rdx */
   src[offset++] = 0x48;
   src[offset++] = 0x89;
   src[offset++] = 0x95;
-  src[offset++] = 0xb4;//смещение для переменных
+  src[offset++] = 0xb4;		//смещение для переменных
   src[offset++] = 0xff;
   src[offset++] = 0xff;
   src[offset++] = 0xff;
-  /*mov qword [rbp - 0x54], rsi*/
+  /*mov qword [rbp - 0x54], rsi */
   src[offset++] = 0x48;
   src[offset++] = 0x89;
   src[offset++] = 0xb5;
-  src[offset++] = 0xac;//смещение для переменных
+  src[offset++] = 0xac;		//смещение для переменных
   src[offset++] = 0xff;
   src[offset++] = 0xff;
   src[offset++] = 0xff;
-  /*mov qword [rbp - 0x5c], rdi*/
+  /*mov qword [rbp - 0x5c], rdi */
   src[offset++] = 0x48;
   src[offset++] = 0x89;
   src[offset++] = 0xbd;
-  src[offset++] = 0xa4;//смещение для переменных
+  src[offset++] = 0xa4;		//смещение для переменных
   src[offset++] = 0xff;
   src[offset++] = 0xff;
   src[offset++] = 0xff;
@@ -447,7 +235,7 @@ size_t offset = sizeof (closure_data);
   src[offset++] = 0x48;
   src[offset++] = 0x89;
   src[offset++] = 0x45;
-  src[offset++] = 0x9c;//0x100-смещение_rbp
+  src[offset++] = 0x9c;		//0x100-смещение_rbp
 
 /*closure_ptr = 0x948349384983*/
 /*сохраняем в стеке указатель на данные замыкания*/
@@ -460,7 +248,7 @@ size_t offset = sizeof (closure_data);
   src[offset++] = 0x48;
   src[offset++] = 0x89;
   src[offset++] = 0x45;
-  src[offset++] = 0xf8;//0x100-смещение_rbp
+  src[offset++] = 0xf8;		//0x100-смещение_rbp
 
 /*argc = 0;*/
 /*xor rax, rax*/
@@ -470,7 +258,7 @@ size_t offset = sizeof (closure_data);
 /*mov dword [rbp - 0xc], eax*/
   src[offset++] = 0x89;
   src[offset++] = 0x45;
-  src[offset++] = 0xf4;//0x100-смещение_rbp
+  src[offset++] = 0xf4;		//0x100-смещение_rbp
 
 /*local_argv_head = NULL*/
 /*xor rax, rax*/
@@ -481,14 +269,14 @@ size_t offset = sizeof (closure_data);
   src[offset++] = 0x48;
   src[offset++] = 0x89;
   src[offset++] = 0x45;
-  src[offset++] = 0xe4;//0x100-смещение_rbp
+  src[offset++] = 0xe4;		//0x100-смещение_rbp
 
 /*int argc_remains = closure_ptr->argc_remains;*/
 /*mov rax, qword [rbp - 8]*/
   src[offset++] = 0x48;
   src[offset++] = 0x8b;
   src[offset++] = 0x45;
-  src[offset++] = 0xf8;//0x100-смещение_rbp
+  src[offset++] = 0xf8;		//0x100-смещение_rbp
 /*mov eax, dword [rax + 0x20]*/
   src[offset++] = 0x8b;
   src[offset++] = 0x40;
@@ -496,12 +284,12 @@ size_t offset = sizeof (closure_data);
 /*mov dword [rbp - 0x14], eax*/
   src[offset++] = 0x89;
   src[offset++] = 0x45;
-  src[offset++] = 0xec;//0x100-смещение_rbp
+  src[offset++] = 0xec;		//0x100-смещение_rbp
 
 /*Начало while (argc_remains)*/
 /*jmp смещение проверки*/
   src[offset++] = 0xeb;
-  src[offset++] = 0x4a;//относительное смещение(длина тела цикла)
+  src[offset++] = 0x56;		//относительное смещение(длина тела цикла)
 
 /*Начало тела цикла*/
 
@@ -509,7 +297,7 @@ size_t offset = sizeof (closure_data);
 /*add dword [rbp - 0xc], 1*/
   src[offset++] = 0x83;
   src[offset++] = 0x45;
-  src[offset++] = 0xf4;//0x100-смещение_rbp
+  src[offset++] = 0xf4;		//0x100-смещение_rbp
   src[offset++] = 0x01;
 
 /*if (argc == 7)
@@ -524,7 +312,7 @@ size_t offset = sizeof (closure_data);
   src[offset++] = 0x07;
 /*jne количество байт до конца условия*/
   src[offset++] = 0x75;
-  src[offset++] = 0x0b; //относительное смещение
+  src[offset++] = 0x0b;		//относительное смещение
 /*ptr_local_arg = rbp + 0x8*/
 /*mov rax, rbp*/
   src[offset++] = 0x48;
@@ -539,30 +327,47 @@ size_t offset = sizeof (closure_data);
   src[offset++] = 0x48;
   src[offset++] = 0x89;
   src[offset++] = 0x45;
-  src[offset++] = 0x9c;//0x100-смещение_rbp
+  src[offset++] = 0x9c;		//0x100-смещение_rbp
 
 /*сохраняем локальные переменные в связный список*/
-/*local_argv_head = closure_save_arg (local_argv_head, qword[ptr_local_arg])*/
-/*помещаем 2-й аргумент в rsi*/
-/*mov rax, qword [rbp - 0x64]*/
-  src[offset++] = 0x48;
-  src[offset++] = 0x8b;
-  src[offset++] = 0x45;
-  src[offset++] = 0x9c;//0x100-смещение_rbp
-/*mov rsi, qword [rax]*/
-  src[offset++] = 0x48;
-  src[offset++] = 0x8b;
-  src[offset++] = 0x30;
+/*local_argv_head = closure_save_arg (local_argv_head, qword[ptr_local_arg], qword[ptr_local_arg+8])*/
 /*помещаем 1-й аргумент в регистр rdi*/
 /*mov rax, qword [rbp - 0x1c]*/
   src[offset++] = 0x48;
   src[offset++] = 0x8b;
   src[offset++] = 0x45;
-  src[offset++] = 0xe4;//0x100-смещение_rbp
+  src[offset++] = 0xe4;		//0x100-смещение_rbp
 /*mov rdi, rax*/
   src[offset++] = 0x48;
   src[offset++] = 0x89;
   src[offset++] = 0xc7;
+/*помещаем 2-й аргумент в rsi*/
+/*mov rax, qword [rbp - 0x64]*/
+  src[offset++] = 0x48;
+  src[offset++] = 0x8b;
+  src[offset++] = 0x45;
+  src[offset++] = 0x9c;		//0x100-смещение_rbp
+/*mov rsi, qword [rax]*/
+  src[offset++] = 0x48;
+  src[offset++] = 0x8b;
+  src[offset++] = 0x30;
+/*помещаем 3-й аргумент в rdx*/
+/*ptr_local_arg+=8;*/
+/*add qword [rbp - 0x64], 8*/
+  src[offset++] = 0x48;
+  src[offset++] = 0x83;
+  src[offset++] = 0x45;
+  src[offset++] = 0x9c;
+  src[offset++] = 0x08;
+/*mov rax, qword [rbp - 0x64]*/
+  src[offset++] = 0x48;
+  src[offset++] = 0x8b;
+  src[offset++] = 0x45;
+  src[offset++] = 0x9c;		//0x100-смещение_rbp
+/*mov rdx, qword [rax]*/
+  src[offset++] = 0x48;
+  src[offset++] = 0x8b;
+  src[offset++] = 0x10;
 
 /*Делаем вызов функции*/
 /*сохраняем в стеке IP первого байта после вызова функции*/
@@ -570,7 +375,7 @@ size_t offset = sizeof (closure_data);
   src[offset] = 0x48;
   src[offset + 1] = 0xb8;
 //+количество байт до первого байта после вызова функции
-  *((size_t *) (src + offset + 2)) = (size_t) (src + offset+26);
+  *((size_t *) (src + offset + 2)) = (size_t) (src + offset + 26);
   offset += 10;
 /*push rax*/
   src[offset++] = 0x50;
@@ -594,7 +399,7 @@ size_t offset = sizeof (closure_data);
   src[offset++] = 0x48;
   src[offset++] = 0x89;
   src[offset++] = 0x45;
-  src[offset++] = 0xe4;//0x100-смещение_rbp
+  src[offset++] = 0xe4;		//0x100-смещение_rbp
 
 /*ptr_local_arg+=8;*/
 /*add qword [rbp - 0x64], 8*/
@@ -608,7 +413,7 @@ size_t offset = sizeof (closure_data);
 /*sub dword [rbp - 0x14], 1*/
   src[offset++] = 0x83;
   src[offset++] = 0x6d;
-  src[offset++] = 0xec;//0x100-смещение_rbp
+  src[offset++] = 0xec;		//0x100-смещение_rbp
   src[offset++] = 0x01;
 
 /*Конец тела цикла*/
@@ -616,11 +421,11 @@ size_t offset = sizeof (closure_data);
 /*cmp dword [rbp - 0x14], 0*/
   src[offset++] = 0x83;
   src[offset++] = 0x7d;
-  src[offset++] = 0xec;//0x100-смещение_rbp
+  src[offset++] = 0xec;		//0x100-смещение_rbp
   src[offset++] = 0x00;
 /*jne конец_условия*/
   src[offset++] = 0x75;
-  src[offset++] = 0xb0; //относительное смещение(-6 - длина тела цикла)
+  src[offset++] = 0xa4;		//относительное смещение(-6 - длина тела цикла)
 
 /*Конец while (argc_remains)*/
 
@@ -630,26 +435,26 @@ size_t offset = sizeof (closure_data);
   src[offset++] = 0x48;
   src[offset++] = 0x8b;
   src[offset++] = 0x45;
-  src[offset++] = 0xf8;//0x100-смещение_rbp
+  src[offset++] = 0xf8;		//0x100-смещение_rbp
 /*mov eax, dword [rax]*/
   src[offset++] = 0x8b;
   src[offset++] = 0x00;
 /*mov dword [rbp - 0x10], eax*/
   src[offset++] = 0x89;
   src[offset++] = 0x45;
-  src[offset++] = 0xf0;//0x100-смещение_rbp
+  src[offset++] = 0xf0;		//0x100-смещение_rbp
 
 /*temp_argv_head = local_argv_head;*/
 /*mov rax, qword [rbp - 0x1c]*/
   src[offset++] = 0x48;
   src[offset++] = 0x8b;
   src[offset++] = 0x45;
-  src[offset++] = 0xe4;//0x100-смещение_rbp
+  src[offset++] = 0xe4;		//0x100-смещение_rbp
 /*mov qword [rbp - 0x24], rax*/
   src[offset++] = 0x48;
   src[offset++] = 0x89;
   src[offset++] = 0x45;
-  src[offset++] = 0xdc;//0x100-смещение_rbp
+  src[offset++] = 0xdc;		//0x100-смещение_rbp
 
 /*Заполняем стек параметрами и регистры аргументами
 в регистр попадаю первые 6 аргументов, остальные в стек
@@ -660,7 +465,7 @@ size_t offset = sizeof (closure_data);
 /*Начало while (argc_all)*/
 /*jmp смещение проверки*/
   src[offset++] = 0xeb;
-  src[offset++] = 0x75;//относительное смещение(длина тела цикла)
+  src[offset++] = 0x75;		//относительное смещение(длина тела цикла)
 
 /*Начало тела цикла*/
 
@@ -672,7 +477,7 @@ size_t offset = sizeof (closure_data);
   src[offset++] = 0x48;
   src[offset++] = 0x83;
   src[offset++] = 0x7d;
-  src[offset++] = 0xdc;//0x100-смещение_rbp
+  src[offset++] = 0xdc;		//0x100-смещение_rbp
   src[offset++] = 0x00;
 /*jne конец условия*/
   src[offset++] = 0x75;
@@ -681,7 +486,7 @@ size_t offset = sizeof (closure_data);
   src[offset++] = 0x48;
   src[offset++] = 0x8b;
   src[offset++] = 0x45;
-  src[offset++] = 0xf8;//0x100-смещение_rbp
+  src[offset++] = 0xf8;		//0x100-смещение_rbp
 /*mov rax, qword [rax + 0x10](получение head)*/
   src[offset++] = 0x48;
   src[offset++] = 0x8b;
@@ -691,19 +496,19 @@ size_t offset = sizeof (closure_data);
   src[offset++] = 0x48;
   src[offset++] = 0x89;
   src[offset++] = 0x45;
-  src[offset++] = 0xdc;//0x100-смещение_rbp
+  src[offset++] = 0xdc;		//0x100-смещение_rbp
 
 /*аргумент попадает в rax, а затем либо в стек, либо в регистры*/
 /*mov rax, qword [rbp - 0x24]*/
   src[offset++] = 0x48;
   src[offset++] = 0x8b;
   src[offset++] = 0x45;
-  src[offset++] = 0xdc;//0x100-смещение_rbp
+  src[offset++] = 0xdc;		//0x100-смещение_rbp
 /*mov rax, qword [rax + 0x8](получение value)*/
   src[offset++] = 0x48;
   src[offset++] = 0x8b;
   src[offset++] = 0x40;
-  src[offset++] = 0x08;//0x100-смещение_rbp
+  src[offset++] = 0x08;		//0x100-смещение_rbp
 
 /*начало_ветвления_по_аргументам*/
 /*Начало стек*/
@@ -711,124 +516,124 @@ size_t offset = sizeof (closure_data);
 /*cmp dword [rbp - 0x10], 6*/
   src[offset++] = 0x83;
   src[offset++] = 0x7d;
-  src[offset++] = 0xf0;//0x100-смещение_rbp
+  src[offset++] = 0xf0;		//0x100-смещение_rbp
   src[offset++] = 0x06;
 /*jle else if*/
   src[offset++] = 0x7e;
-  src[offset++] = 0x03; //относительное смещение
+  src[offset++] = 0x03;		//относительное смещение
 /*push rax*/
   src[offset++] = 0x50;
 /*jmp конец_ветвления_по_аргументам*/
   src[offset++] = 0xeb;
-  src[offset++] = 0x42;//относительное смещение
+  src[offset++] = 0x42;		//относительное смещение
 /*Конец стек*/
 /*Начало r9*/
 /*  if (argc_all == 6)*/
 /*cmp dword [rbp - 0x10], 6*/
   src[offset++] = 0x83;
   src[offset++] = 0x7d;
-  src[offset++] = 0xf0;//0x100-смещение_rbp
+  src[offset++] = 0xf0;		//0x100-смещение_rbp
   src[offset++] = 0x06;
 /*jne else if*/
   src[offset++] = 0x75;
-  src[offset++] = 0x05; //относительное смещение
+  src[offset++] = 0x05;		//относительное смещение
 /*mov r9, rax*/
   src[offset++] = 0x49;
   src[offset++] = 0x89;
   src[offset++] = 0xc1;
 /*jmp конец_ветвления_по_аргументам*/
   src[offset++] = 0xeb;
-  src[offset++] = 0x37;//относительное смещение
+  src[offset++] = 0x37;		//относительное смещение
 /*Конец r9*/
 /*Начало r8*/
 /*  if (argc_all == 5)*/
 /*cmp dword [rbp - 0x10], 5*/
   src[offset++] = 0x83;
   src[offset++] = 0x7d;
-  src[offset++] = 0xf0;//0x100-смещение_rbp
+  src[offset++] = 0xf0;		//0x100-смещение_rbp
   src[offset++] = 0x05;
 /*jne else if*/
   src[offset++] = 0x75;
-  src[offset++] = 0x05; //относительное смещение
+  src[offset++] = 0x05;		//относительное смещение
 /*mov r8, rax*/
   src[offset++] = 0x49;
   src[offset++] = 0x89;
   src[offset++] = 0xc0;
 /*jmp конец_ветвления_по_аргументам*/
   src[offset++] = 0xeb;
-  src[offset++] = 0x2c;//относительное смещение
+  src[offset++] = 0x2c;		//относительное смещение
 /*Конец r8*/
 /*Начало rcx*/
 /*  if (argc_all == 4)*/
 /*cmp dword [rbp - 0x10], 4*/
   src[offset++] = 0x83;
   src[offset++] = 0x7d;
-  src[offset++] = 0xf0;//0x100-смещение_rbp
+  src[offset++] = 0xf0;		//0x100-смещение_rbp
   src[offset++] = 0x04;
 /*jne else if*/
   src[offset++] = 0x75;
-  src[offset++] = 0x05; //относительное смещение
+  src[offset++] = 0x05;		//относительное смещение
 /*mov rcx, rax*/
   src[offset++] = 0x48;
   src[offset++] = 0x89;
   src[offset++] = 0xc1;
 /*jmp конец_ветвления_по_аргументам*/
   src[offset++] = 0xeb;
-  src[offset++] = 0x21;//относительное смещение
+  src[offset++] = 0x21;		//относительное смещение
 /*Конец rcx*/
 /*Начало rdx*/
 /*  if (argc_all == 3)*/
 /*cmp dword [rbp - 0x10], 3*/
   src[offset++] = 0x83;
   src[offset++] = 0x7d;
-  src[offset++] = 0xf0;//0x100-смещение_rbp
+  src[offset++] = 0xf0;		//0x100-смещение_rbp
   src[offset++] = 0x03;
 /*jne else if*/
   src[offset++] = 0x75;
-  src[offset++] = 0x05; //относительное смещение
+  src[offset++] = 0x05;		//относительное смещение
 /*mov rdx, rax*/
   src[offset++] = 0x48;
   src[offset++] = 0x89;
   src[offset++] = 0xc2;
 /*jmp конец_ветвления_по_аргументам*/
   src[offset++] = 0xeb;
-  src[offset++] = 0x16;//относительное смещение
+  src[offset++] = 0x16;		//относительное смещение
 /*Конец rdx*/
 /*Начало rsi*/
 /*  if (argc_all == 2)*/
 /*cmp dword [rbp - 0x10], 2*/
   src[offset++] = 0x83;
   src[offset++] = 0x7d;
-  src[offset++] = 0xf0;//0x100-смещение_rbp
+  src[offset++] = 0xf0;		//0x100-смещение_rbp
   src[offset++] = 0x02;
 /*jne else if*/
   src[offset++] = 0x75;
-  src[offset++] = 0x05; //относительное смещение
+  src[offset++] = 0x05;		//относительное смещение
 /*mov rsi, rax*/
   src[offset++] = 0x48;
   src[offset++] = 0x89;
   src[offset++] = 0xc6;
 /*jmp конец_ветвления_по_аргументам*/
   src[offset++] = 0xeb;
-  src[offset++] = 0x0b;//относительное смещение
+  src[offset++] = 0x0b;		//относительное смещение
 /*Конец rsi*/
 /*Начало rdi*/
 /*  if (argc_all == 1)*/
 /*cmp dword [rbp - 0x10], 1*/
   src[offset++] = 0x83;
   src[offset++] = 0x7d;
-  src[offset++] = 0xf0;//0x100-смещение_rbp
+  src[offset++] = 0xf0;		//0x100-смещение_rbp
   src[offset++] = 0x01;
 /*jne else if*/
   src[offset++] = 0x75;
-  src[offset++] = 0x05; //относительное смещение
+  src[offset++] = 0x05;		//относительное смещение
 /*mov rdi, rax*/
   src[offset++] = 0x48;
   src[offset++] = 0x89;
   src[offset++] = 0xc7;
 /*jmp конец_ветвления_по_аргументам*/
   src[offset++] = 0xeb;
-  src[offset++] = 0x00;//относительное смещение
+  src[offset++] = 0x00;		//относительное смещение
 /*Конец rdi*/
 
 /*конец_ветвления_по_аргументам*/
@@ -838,7 +643,7 @@ size_t offset = sizeof (closure_data);
   src[offset++] = 0x48;
   src[offset++] = 0x8b;
   src[offset++] = 0x45;
-  src[offset++] = 0xdc;//0x100-смещение_rbp
+  src[offset++] = 0xdc;		//0x100-смещение_rbp
 /*mov rax, qword [rax](получение next по указателю)*/
   src[offset++] = 0x48;
   src[offset++] = 0x8b;
@@ -847,13 +652,13 @@ size_t offset = sizeof (closure_data);
   src[offset++] = 0x48;
   src[offset++] = 0x89;
   src[offset++] = 0x45;
-  src[offset++] = 0xdc;//0x100-смещение_rbp
+  src[offset++] = 0xdc;		//0x100-смещение_rbp
 
 /*argc_all--;*/
 /*sub dword [rbp - 0x10], 1*/
   src[offset++] = 0x83;
   src[offset++] = 0x6d;
-  src[offset++] = 0xf0;//0x100-смещение_rbp
+  src[offset++] = 0xf0;		//0x100-смещение_rbp
   src[offset++] = 0x01;
 
 /*Конец тела цикла*/
@@ -861,11 +666,11 @@ size_t offset = sizeof (closure_data);
 /*cmp dword [rbp - 0x10], 0*/
   src[offset++] = 0x83;
   src[offset++] = 0x7d;
-  src[offset++] = 0xf0;//0x100-смещение_rbp
+  src[offset++] = 0xf0;		//0x100-смещение_rbp
   src[offset++] = 0x00;
 /*jne конец_условия*/
   src[offset++] = 0x75;
-  src[offset++] = 0x85; //относительное смещение(-6 - длина тела цикла)
+  src[offset++] = 0x85;		//относительное смещение(-6 - длина тела цикла)
 
 /*Конец while (argc_all)*/
 
@@ -875,7 +680,7 @@ size_t offset = sizeof (closure_data);
   src[offset] = 0x48;
   src[offset + 1] = 0xb8;
 //+количество байт до первого байта после вызова функции
-  *((size_t *) (src + offset + 2)) = (size_t) (src + offset+26);
+  *((size_t *) (src + offset + 2)) = (size_t) (src + offset + 26);
   offset += 10;
 /*push rax*/
   src[offset++] = 0x50;
@@ -899,7 +704,7 @@ size_t offset = sizeof (closure_data);
   src[offset++] = 0x48;
   src[offset++] = 0x89;
   src[offset++] = 0x45;
-  src[offset++] = 0xd4;//0x100-смещение_rbp
+  src[offset++] = 0xd4;		//0x100-смещение_rbp
 
 /*очищаем список локальных переменных
   free_argv (local_argv_head);*/
@@ -908,7 +713,7 @@ size_t offset = sizeof (closure_data);
   src[offset++] = 0x48;
   src[offset++] = 0x8b;
   src[offset++] = 0x45;
-  src[offset++] = 0xe4;//0x100-смещение_rbp
+  src[offset++] = 0xe4;		//0x100-смещение_rbp
 /*mov rdi, rax*/
   src[offset++] = 0x48;
   src[offset++] = 0x89;
@@ -919,7 +724,7 @@ size_t offset = sizeof (closure_data);
   src[offset] = 0x48;
   src[offset + 1] = 0xb8;
 //+количество байт до первого байта после вызова функции
-  *((size_t *) (src + offset + 2)) = (size_t) (src + offset+26);
+  *((size_t *) (src + offset + 2)) = (size_t) (src + offset + 26);
   offset += 10;
 /*push rax*/
   src[offset++] = 0x50;
@@ -943,7 +748,7 @@ size_t offset = sizeof (closure_data);
   src[offset++] = 0x48;
   src[offset++] = 0x8b;
   src[offset++] = 0x45;
-  src[offset++] = 0xd4;//0x100-смещение_rbp
+  src[offset++] = 0xd4;		//0x100-смещение_rbp
 
 /*leave*/
 /*Превращается в следующие команды:*/
@@ -964,7 +769,7 @@ void
 delete_closure (closure_t adder)
 {
 
-  closure_data *cd = (closure_data *) (adder - sizeof (closure_data));
+  closure_data *cd = (closure_data *) ((size_t)adder - sizeof (closure_data));
 
   free_argv (cd->head);
 
@@ -972,12 +777,11 @@ delete_closure (closure_t adder)
 
 }
 
-
 int
 main ()
 {
 
-#if 1
+#if 0
   printf ("1: %ld \n", sum (9, 1, 2, 3, 4, 5, 6, 7, 8, 9));
 
   closure_t func = closure_make (sum, 10, 2, 9, 1);
@@ -985,7 +789,7 @@ main ()
 
   printf ("2: %ld \n", res);
 
-  closure_t func_new = closure_make_new(sum, 10, 2, 9, 1);
+  closure_t func_new = closure_make_new (sum, 10, 2, 9, 1);
   size_t res_new = func_new (2, 3, 4, 5, 6, 7, 8, 9);
 
   printf ("3: %ld \n", res_new);
@@ -1004,7 +808,7 @@ main ()
   printf ("2: %ld \n", res);
 
   closure_t func_new = closure_make_new (fix_sum, 2, 1, 1);
-  size_t res_new = func_new(2);
+  size_t res_new = func_new (2);
 
   printf ("3: %ld \n", res_new);
 
@@ -1029,6 +833,18 @@ main ()
 
   delete_closure (func);
   delete_closure (func_new);
+
+#endif
+
+#if 1
+  char *pattern = "%s%d\n";
+  printf (pattern, "Простая функция", 5);
+
+  char *text = "Функция замыкания";
+  closure_t func = closure_make (printf, 3, 1, pattern, strlen (pattern) + 1);
+  size_t res = func (text, strlen (text) + 1, 5, 0);
+
+  delete_closure (func);
 
 #endif
 

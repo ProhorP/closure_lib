@@ -5,14 +5,14 @@
 #include <sys/mman.h>
 
 typedef unsigned char byte;
-typedef int (*closure_t) (int, ...);
-typedef int (*closure_src_func_t) (void);
+typedef size_t (*closure_t) (size_t, ...);
+typedef size_t (*closure_src_func_t) (void);
 typedef struct argv_entry argv_entry;
 
 struct argv_entry
 {
   argv_entry *next;
-  int value;
+  size_t value;
 };
 
 struct closure_data
@@ -21,10 +21,11 @@ struct closure_data
   closure_t func;
   argv_entry *head;
   size_t src_len;
-int argc_remains;
+  int argc_remains;
 };
 
 typedef struct closure_data closure_data;
+
 
 /*сохранение агрументов, добавляя новые в голову.
 Нужно для передачи параметров в пользовательскую функцию в обратном порядке*/
@@ -63,7 +64,9 @@ closure_ptr = NULL;
 //if (argc == 7)
 //    argc_all = 1;
 //int argc_remains = closure_ptr->argc_remains;
-//argv_entry *temp_argv_head;
+argv_entry *temp_argv_head;
+if (!temp_argv_head)
+     temp_argv_head = closure_ptr->head;
 //free_argv(temp_argv_head);
 
 //argc_all = closure_ptr->argc_all;

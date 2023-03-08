@@ -290,7 +290,7 @@ closure_make (closure_t func, int argc_all, int argc, ...)
 /*Начало while (argc_remains)*/
 /*jmp смещение проверки*/
   src[offset++] = 0xeb;
-  src[offset++] = 0x5a;		//относительное смещение(длина тела цикла)
+  src[offset++] = 0x50;		//относительное смещение(длина тела цикла)
 
 /*Начало тела цикла*/
 
@@ -331,7 +331,7 @@ closure_make (closure_t func, int argc_all, int argc, ...)
   src[offset++] = 0x9c;		//0x100-смещение_rbp
 
 /*сохраняем локальные переменные в связный список*/
-/*local_argv_head = closure_save_arg (local_argv_head, qword[ptr_local_arg], qword[ptr_local_arg+8])*/
+/*local_argv_head = closure_save_arg (local_argv_head, qword[ptr_local_arg], 0)*/
 /*помещаем 1-й аргумент в регистр rdi*/
 /*mov rax, qword [rbp - 0x1c]*/
   src[offset++] = 0x48;
@@ -353,29 +353,14 @@ closure_make (closure_t func, int argc_all, int argc, ...)
   src[offset++] = 0x8b;
   src[offset++] = 0x30;
 /*помещаем 3-й аргумент в rdx*/
-/*ptr_local_arg+=8;*/
-/*add qword [rbp - 0x64], 8*/
+/*xor rax, rax*/
   src[offset++] = 0x48;
-  src[offset++] = 0x83;
-  src[offset++] = 0x45;
-  src[offset++] = 0x9c;
-  src[offset++] = 0x08;
-/*argc++;*/
-/*add dword [rbp - 0xc], 1*/
-  src[offset++] = 0x83;
-  src[offset++] = 0x45;
-  src[offset++] = 0xf4;		//0x100-смещение_rbp
-  src[offset++] = 0x01;
-/*mov rax, qword [rbp - 0x64]*/
+  src[offset++] = 0x31;
+  src[offset++] = 0xc0;
+/*mov rdx, rax*/
   src[offset++] = 0x48;
-  src[offset++] = 0x8b;
-  src[offset++] = 0x45;
-  src[offset++] = 0x9c;		//0x100-смещение_rbp
-/*mov rdx, qword [rax]*/
-  src[offset++] = 0x48;
-  src[offset++] = 0x8b;
-  src[offset++] = 0x10;
-
+  src[offset++] = 0x89;
+  src[offset++] = 0xc2;
 
 /*Делаем вызов функции*/
 /*сохраняем в стеке IP первого байта после вызова функции*/
@@ -433,7 +418,7 @@ closure_make (closure_t func, int argc_all, int argc, ...)
   src[offset++] = 0x00;
 /*jne конец_условия*/
   src[offset++] = 0x75;
-  src[offset++] = 0xa0;		//относительное смещение(-6 - длина тела цикла)
+  src[offset++] = 0xaa;		//относительное смещение(-6 - длина тела цикла)
 
 /*Конец while (argc_remains)*/
 
@@ -789,11 +774,11 @@ int
 main ()
 {
 
-#if 1
+#if 0
   printf ("1: %ld \n", sum (9, 1, 2, 3, 4, 5, 6, 7, 8, 9));
 
   closure_t func = closure_make (sum, 10, 2, 9,0, 1,0);
-  intptr_t res = func (2,0, 3,0, 4,0, 5,0, 6,0, 7,0, 8,0, 9,0);
+  intptr_t res = func (2,3,4,5,6,7,8,9);
 
   printf ("2: %ld \n", res);
 
@@ -805,7 +790,7 @@ main ()
   printf ("1: %ld \n", fix_sum (1, 2));
 
   closure_t func = closure_make (fix_sum, 2, 1, 1,0);
-  intptr_t res = func (2,0);
+  intptr_t res = func (2);
 
   printf ("2: %ld \n", res);
 
@@ -817,7 +802,7 @@ main ()
   printf ("1: %ld \n", fix_sum_char (2, 2));
 
   closure_t func = closure_make (fix_sum_char, 2, 1, 2,0);
-  intptr_t res = func (2,0);
+  intptr_t res = func (2);
 
   printf ("2: %ld \n", res);
 
@@ -825,13 +810,13 @@ main ()
 
 #endif
 
-#if 0
+#if 1
   char *pattern = "%s%d\n";
   printf (pattern, "Простая функция", 5);
 
   char *text = "Функция замыкания";
   closure_t func = closure_make (printf, 3, 1, pattern, strlen (pattern) + 1);
-  intptr_t res = func (text, strlen (text) + 1, 5, 0);
+  intptr_t res = func (text, 5);
 
   delete_closure (func);
 

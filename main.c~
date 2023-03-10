@@ -91,8 +91,7 @@ main ()
   printf (pattern, "Простая функция", 5);
 
   closure_t func;
-  CLOSURE_MAKE (func, printf, 3, 1,
-		CLOSURE_POINTER (pattern, strlen (pattern) + 1));
+  CLOSURE_MAKE (func, printf, 3, 1, CLOSURE_POINTER(pattern, strlen (pattern) + 1));
 
   free (pattern);		//удаляем указатель переданный в замыкание
   func ("Функция замыкания", 5);

@@ -10,10 +10,21 @@
 #include <stdint.h>
 #define CLOSURE_SCALAR(x) x, 0
 #define CLOSURE_POINTER(x, z) x, z
+#define CLOSURE_FUNC(x) (void*)x
+
+#define CLOSURE_MAKE(ret_func, func, argc_all, argc, ...) \
+_Pragma("GCC diagnostic push") \
+_Pragma("GCC diagnostic ignored \"-Wpedantic\"") \
+ret_func = closure_make((void *)func, argc_all, argc, __VA_ARGS__);\
+_Pragma("GCC diagnostic pop")
+
+#define CLOSURE_DELETE(argument) \
+_Pragma("GCC diagnostic push") \
+_Pragma("GCC diagnostic ignored \"-Wpedantic\"") \
+  closure_delete((void*)argument); \
+_Pragma("GCC diagnostic pop")
 
 typedef unsigned char byte;
-typedef intptr_t (*closure_t) (intptr_t, ...);
-typedef intptr_t (*closure_src_func_t) (void);
 typedef struct argv_entry argv_entry;
 
 struct argv_entry
@@ -25,7 +36,7 @@ struct argv_entry
 struct closure_data
 {
   int argc_all;
-  closure_t func;
+  void *func;
   argv_entry *head;
   intptr_t src_len;
   int argc_remains;
@@ -83,8 +94,8 @@ closure_save_arg (argv_entry * head, intptr_t value, intptr_t size)
   return new;
 }
 
-closure_t
-closure_make (closure_t func, int argc_all, int argc, ...)
+void *
+closure_make (void *func, int argc_all, int argc, ...)
 {
 
   byte *src;
@@ -732,13 +743,13 @@ closure_make (closure_t func, int argc_all, int argc, ...)
 
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wpedantic"
-  return (closure_t) (src + sizeof (closure_data));
+  return (void *) (src + sizeof (closure_data));
 #pragma GCC diagnostic pop
 
 }
 
 void
-delete_closure (closure_t adder)
+closure_delete (void *adder)
 {
 
   closure_data *cd =

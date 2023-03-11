@@ -5,7 +5,7 @@ There are only 2 macro in the library:
 
 ## CLOSURE_MAKE
 
-void CLOSURE_MAKE(void *closure_func, void *func, int argc_all, int argc, ...)
+CLOSURE_MAKE(void *closure_func, void *func, int argc_all, int argc, ...)
 
 * closure_func - closure function, which can be called
 * func - the function that is stored in the closure
@@ -43,6 +43,8 @@ main ()
 {
 
   /*Independent work*/
+  /*equal int sum (int b)*/
+  /*because the argument A is stored in the closure*/
   typedef int (*closure_t) (int);
 
   /*memory allocation for the closure function*/
@@ -51,9 +53,9 @@ main ()
   /*create closure function*/
   /*closure_func - closure function, which can be called*/
   /*func - the function that is stored in the closure*/
-  /*2 - total number of arguments in finction sum */
+  /*2 - total number of arguments in function sum */
   /*1 - the number of arguments stored in the closure*/
-  /*CLOSURE_SCALAR (1) - scalar artument equal to q stored in the closure*/
+  /*CLOSURE_SCALAR (1) - scalar artument equal to 1 stored in the closure*/
   CLOSURE_MAKE (closure_func, sum, 2, 1, CLOSURE_SCALAR (1));
 
   /*call closure function*/

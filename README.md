@@ -8,13 +8,13 @@ Closure is a lightweight library written in C.
 * Test suites
 
 ## Installation
-Run:
 ```
 git clone https://github.com/ProhorP/closure_lib.git
 ```
 and copy closure.h to you source code tree.
 
 ## Installation
+Run:
 ```
  cd tests/test01
 or
@@ -25,6 +25,7 @@ or
  cd tests/test04
 ```
 ```make test``` to compile and run tests.
+```make clean``` to clean bin files.
 
 ## Examples
 

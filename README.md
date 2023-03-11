@@ -23,6 +23,8 @@ or
  cd tests/test03
 or
  cd tests/test04
+or
+ cd tests/test05
 ```
 ```make test``` to compile and run tests.
 ```make clean``` to clean bin files.

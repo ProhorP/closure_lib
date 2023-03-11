@@ -13,7 +13,7 @@ git clone https://github.com/ProhorP/closure_lib.git
 ```
 and copy closure.h to you source code tree.
 
-## Installation
+## Test
 Run:
 ```
  cd tests/test01

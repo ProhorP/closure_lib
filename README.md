@@ -4,7 +4,7 @@ Closure is a lightweight library written in C.
 ## Features
 * Lightweight (only 1 files)
 * Simple API
-* c11/gnu99 compatible
+* c11 compatible
 * Test suites
 
 ## Installation

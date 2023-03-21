@@ -5,6 +5,7 @@ Closure is a lightweight library written in C.
 * Lightweight (only 1 files)
 * Simple API
 * c11 compatible
+* Only for GCC compiler
 * Test suites
 
 ## Installation
@@ -32,6 +33,7 @@ or
 ## Examples
 
 ```
+#define CLOSURE_LIB
 #include "closure.h"
 #include <stdio.h>
 

@@ -1,3 +1,4 @@
+#define CLOSURE_LIB
 #include "../../closure.h"
 #include <stdio.h>
 

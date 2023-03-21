@@ -1,5 +1,8 @@
-#ifndef CLOSURE_LIB
-#define CLOSURE_LIB
+#ifdef CLOSURE_LIB
+
+#ifndef __GNUC__
+#error "Only for GCC compiler"
+#endif
 
 #include <stdio.h>
 #include <string.h>

@@ -29,6 +29,7 @@ it is necessary to declare the prototype of the closure function yourself, for t
 ## Examples
 
 ```
+#define CLOSURE_LIB
 #include "closure.h"
 #include <stdio.h>
 

@@ -6,6 +6,7 @@ Closure is a lightweight library written in C.
 * Simple API
 * c11 compatible
 * Only for GCC compiler
+* Only x86-64 platform
 * Test suites
 
 ## Installation
